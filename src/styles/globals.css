@@ -14,8 +14,9 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Force light theme even when the OS is dark */
+    --background: #ffffff;
+    --foreground: #171717;
   }
 }
 
@@ -23,4 +24,17 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+html {
+  /* Hint browsers to render light UI elements (forms, scrollbars) */
+  color-scheme: light;
+}
+
+/* Ensure native select dropdown options stay readable in dark mode */
+@media (prefers-color-scheme: dark) {
+  option {
+    background-color: #ffffff !important;
+    color: #171717 !important;
+  }
 }

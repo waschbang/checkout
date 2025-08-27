@@ -50,13 +50,13 @@ export default function PremiumCheckout() {
 
       const options = {
         method: "POST",
-        // url: "https://apis.aisensy.com/project-apis/v1/project/671a4cf55b514e0bfccba32d/messages",
-        url: "https://apis.aisensy.com/project-apis/v1/project/68778bfb52435a133a4b3039/messages",
+        url: "https://apis.aisensy.com/project-apis/v1/project/671a4cf55b514e0bfccba32d/messages",
+        // url: "https://apis.aisensy.com/project-apis/v1/project/68778bfb52435a133a4b3039/messages",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
-          // "X-AiSensy-Project-API-Pwd": "81175b599c8d27dd2fd65", 
-          "X-AiSensy-Project-API-Pwd": "56e47afac4e7fcbcf0806",
+          "X-AiSensy-Project-API-Pwd": "81175b599c8d27dd2fd65", 
+          // "X-AiSensy-Project-API-Pwd": "56e47afac4e7fcbcf0806",
 
         },
         data: {

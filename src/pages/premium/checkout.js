@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/router";
+import Image from "next/image";
+import axios from "axios";
 
 export default function PremiumCheckout() {
   const router = useRouter();
@@ -33,12 +35,55 @@ export default function PremiumCheckout() {
 
   const inputClass = "w-full h-11 rounded-xl border-2 border-black/20 bg-transparent px-3 outline-none focus:ring-2 focus:ring-black/10 focus:border-black/40";
 
+  function normalizeIndianNumber(input) {
+    const digits = (input || "").replace(/\D/g, "");
+    if (digits.startsWith("91")) return digits;
+    if (digits.startsWith("0")) return `91${digits.substring(1)}`;
+    return `91${digits}`;
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
-    // No API calls required; simulate success and redirect
-    await new Promise((r) => setTimeout(r, 400));
-    router.push("/premium/success");
+    try {
+      const normalized = normalizeIndianNumber(phone);
+
+      const options = {
+        method: "POST",
+        // url: "https://apis.aisensy.com/project-apis/v1/project/671a4cf55b514e0bfccba32d/messages",
+        url: "https://apis.aisensy.com/project-apis/v1/project/68778bfb52435a133a4b3039/messages",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          // "X-AiSensy-Project-API-Pwd": "81175b599c8d27dd2fd65", 
+          "X-AiSensy-Project-API-Pwd": "56e47afac4e7fcbcf0806",
+
+        },
+        data: {
+          to: normalized,
+          type: "template",
+          template: {
+            language: { policy: "deterministic", code: "en" },
+            name: "welcome_message",
+            components: [
+              { type: "body", parameters: [{ type: "text", text: "6-7" }] },
+            ],
+          },
+        },
+      };
+
+      const { data } = await axios.request(options);
+      console.log("AiSensy success:", data);
+      // Continue to success page with phone for WhatsApp button
+      router.push(`/premium/success?phone=${encodeURIComponent(normalized)}`);
+    } catch (error) {
+      console.error("AiSensy error:", error?.response?.data || error?.message || error);
+      // Navigate to success page anyway with normalized phone so user can reach WhatsApp
+      const fallback = normalizeIndianNumber(phone);
+      router.push(`/premium/success?phone=${encodeURIComponent(fallback)}`);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -46,8 +91,13 @@ export default function PremiumCheckout() {
       <header className="border-b border-black/[.08]">
         <div className="mx-auto w-full max-w-6xl flex items-center justify-between p-4 sm:p-6">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-full bg-foreground" aria-hidden></div>
-            <span className="text-lg font-semibold">Imagine Premium</span>
+            <Image
+              src="/logo-imagine.png"
+              alt="Imagine"
+              width={96}
+              height={28}
+              priority
+            />
           </div>
           <nav className="hidden sm:flex items-center gap-4 text-sm">
             <a className="hover:underline" href="/premium/checkout">Prebook</a>
@@ -60,8 +110,16 @@ export default function PremiumCheckout() {
       <main className="flex-1 p-6 sm:p-12">
         <div className="mx-auto w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="border-2 border-black/20 rounded-2xl p-6 sm:p-8 bg-background/60 backdrop-blur-sm">
-          <h1 className="text-2xl sm:text-3xl font-semibold">More with Imagine</h1>
-          <p className="mt-1 text-sm text-black/70 dark:text-white/70">Premium prebooking for iPhone 17 lineup</p>
+          <div className="mb-3 flex justify-center">
+            <Image
+              src="/iphone-pink.png"
+              alt={`${model} in ${color}`}
+              width={800}
+              height={1000}
+              className="h-auto w-full max-w-[44rem]"
+              priority
+            />
+          </div>
 
           <div className="mt-6">
             <div className="flex items-center justify-between">

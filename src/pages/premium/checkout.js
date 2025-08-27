@@ -66,7 +66,7 @@ export default function PremiumCheckout() {
             language: { policy: "deterministic", code: "en" },
             name: "welcome_message",
             components: [
-              { type: "body", parameters: [{ type: "text", text: "6-7" }] },
+              { type: "body", parameters: [{ type: "text", text: "" }] },
             ],
           },
         },

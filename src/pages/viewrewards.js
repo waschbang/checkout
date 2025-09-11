@@ -14,6 +14,7 @@ export default function ViewRewardsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [confirmPhone, setConfirmPhone] = useState(null); // phone waiting for confirm
+  const [redeemingPhone, setRedeemingPhone] = useState(null); // phone currently being redeemed
 
   // Rewards mapping by day index (1-7) based on the UI you shared
   const rewardsByDay = useMemo(
@@ -51,6 +52,7 @@ export default function ViewRewardsPage() {
   async function confirmRedeem() {
     if (!confirmPhone) return;
     try {
+      setRedeemingPhone(confirmPhone);
       await axios.post("/api/users/redeem", { phone: confirmPhone });
       // After redeem, refetch users from the source to reflect updated redeemed flag
       await handleRefresh();
@@ -59,6 +61,7 @@ export default function ViewRewardsPage() {
       console.error(err);
     } finally {
       setConfirmPhone(null);
+      setRedeemingPhone(null);
     }
   }
 
@@ -231,13 +234,13 @@ export default function ViewRewardsPage() {
           />
             <button
               onClick={exportCSV}
-              className="h-11 px-4 rounded-xl border-2 border-black/20 bg-white hover:bg-black/5 text-xs"
+              className="h-11 px-4 rounded-xl border-2 border-black/20 bg-white hover:bg-black/5 text-xs cursor-pointer"
             >
               Export CSV
             </button>
             <button
               onClick={handleRefresh}
-              className="h-11 px-3 rounded-xl border-2 border-black/20 bg-white hover:bg-black/5 text-xs"
+              className="h-11 px-3 rounded-xl border-2 border-black/20 bg-white hover:bg-black/5 text-xs cursor-pointer"
             >
               Refresh
             </button>
@@ -279,11 +282,20 @@ export default function ViewRewardsPage() {
                       <div className="text-sm text-black/60 mt-1">Start: {startedStr}</div>
                     </div>
                     <button
-                      className={`h-10 px-4 rounded-full font-medium self-start ${u?.redeemed ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-foreground text-background hover:opacity-90"}`}
+                      className={`h-10 px-4 rounded-full font-medium self-start ${u?.redeemed || redeemingPhone === u?.phone ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-foreground text-background hover:opacity-90 cursor-pointer"}`}
                       onClick={() => openConfirm(u?.phone)}
-                      disabled={!!u?.redeemed}
+                      disabled={!!u?.redeemed || redeemingPhone === u?.phone}
                     >
-                      {u?.redeemed ? "Redeemed" : "Redeem"}
+                      {redeemingPhone === u?.phone ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                          Redeeming...
+                        </span>
+                      ) : u?.redeemed ? (
+                        "Redeemed"
+                      ) : (
+                        "Redeem"
+                      )}
                     </button>
                   </div>
 
@@ -315,14 +327,14 @@ export default function ViewRewardsPage() {
                   <button
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     disabled={page === 1}
-                    className="h-8 px-3 rounded-lg border-2 border-black/20 disabled:opacity-50 text-xs"
+                    className="h-8 px-3 rounded-lg border-2 border-black/20 disabled:opacity-50 text-xs cursor-pointer disabled:cursor-not-allowed"
                   >
                     Prev
                   </button>
                   <button
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages}
-                    className="h-8 px-3 rounded-lg border-2 border-black/20 disabled:opacity-50 text-xs"
+                    className="h-8 px-3 rounded-lg border-2 border-black/20 disabled:opacity-50 text-xs cursor-pointer disabled:cursor-not-allowed"
                   >
                     Next
                   </button>
@@ -339,8 +351,17 @@ export default function ViewRewardsPage() {
             <h3 className="text-lg font-semibold mb-2">Confirm Redemption</h3>
             <p className="text-sm text-black/70 mb-4">Mark rewards as redeemed for <strong>{confirmPhone}</strong>?</p>
             <div className="flex items-center justify-end gap-2">
-              <button onClick={cancelRedeem} className="h-9 px-3 rounded-lg border-2 border-black/20 text-xs">Cancel</button>
-              <button onClick={confirmRedeem} className="h-9 px-3 rounded-lg bg-foreground text-background text-xs">Confirm</button>
+              <button onClick={cancelRedeem} disabled={!!redeemingPhone} className="h-9 px-3 rounded-lg border-2 border-black/20 text-xs disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
+              <button onClick={confirmRedeem} disabled={!!redeemingPhone} className="h-9 px-3 rounded-lg bg-foreground text-background text-xs disabled:opacity-50 disabled:cursor-not-allowed">
+                {redeemingPhone ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                    Redeeming...
+                  </span>
+                ) : (
+                  "Confirm"
+                )}
+              </button>
             </div>
           </div>
         </div>

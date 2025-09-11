@@ -53,12 +53,22 @@ export default function ViewRewardsPage() {
     if (!confirmPhone) return;
     try {
       setRedeemingPhone(confirmPhone);
-      await axios.post("/api/users/redeem", { phone: confirmPhone });
+      console.log("[ViewRewards] Redeeming for phone:", confirmPhone);
+      const { data } = await axios.post(
+        "https://imagine-sable.vercel.app/users/redeem",
+        { phone: confirmPhone },
+        { headers: { "Content-Type": "application/json" }, timeout: 15000 }
+      );
+      console.log("[ViewRewards] Redeem success:", data);
       // After redeem, refetch users from the source to reflect updated redeemed flag
       await handleRefresh();
+      // Optional: ensure UI reflects server state immediately
+      // If you prefer a full reload, uncomment the next line
+      // if (typeof window !== "undefined") window.location.reload();
     } catch (err) {
-      alert("Redeem failed. Please try again.");
-      console.error(err);
+      const msg = err?.response?.data || err?.message || err;
+      console.error("[ViewRewards] Redeem failed:", msg);
+      alert("Redeem failed. Please try again.\n" + (typeof msg === 'string' ? msg : JSON.stringify(msg)));
     } finally {
       setConfirmPhone(null);
       setRedeemingPhone(null);
@@ -85,13 +95,16 @@ export default function ViewRewardsPage() {
       if (!authed) return;
       setLoading(true);
       try {
+        console.log("[ViewRewards] Fetching users from API...");
         const { data } = await axios.get("https://imagine-sable.vercel.app/users", { timeout: 15000 });
         const list = Array.isArray(data?.users) ? data.users : [];
+        console.log("[ViewRewards] Users fetched:", list.length);
         setUsers(list);
       } catch (err) {
-        console.error("Failed to fetch users:", err?.message || err);
+        console.error("[ViewRewards] Failed to fetch users:", err?.response?.data || err?.message || err);
         setError("Failed to fetch users. Please try again.");
       } finally {
+        console.log("[ViewRewards] Fetching users finished.");
         setLoading(false);
       }
     }
@@ -102,13 +115,16 @@ export default function ViewRewardsPage() {
     if (!authed) return;
     setLoading(true);
     try {
+      console.log("[ViewRewards] Manual refresh: fetching users...");
       const { data } = await axios.get("https://imagine-sable.vercel.app/users", { timeout: 15000 });
       const list = Array.isArray(data?.users) ? data.users : [];
+      console.log("[ViewRewards] Manual refresh: users fetched:", list.length);
       setUsers(list);
     } catch (err) {
-      console.error("Failed to fetch users:", err?.message || err);
+      console.error("[ViewRewards] Manual refresh failed:", err?.response?.data || err?.message || err);
       setError("Failed to fetch users. Please try again.");
     } finally {
+      console.log("[ViewRewards] Manual refresh finished.");
       setLoading(false);
     }
   }
@@ -234,13 +250,13 @@ export default function ViewRewardsPage() {
           />
             <button
               onClick={exportCSV}
-              className="h-11 px-4 rounded-xl border-2 border-black/20 bg-white hover:bg-black/5 text-xs cursor-pointer"
+              className="h-11 px-4 rounded-xl border-2 border-black/20 bg-white hover:bg-black/5 text-xs cursor-pointer transition-colors duration-150"
             >
               Export CSV
             </button>
             <button
               onClick={handleRefresh}
-              className="h-11 px-3 rounded-xl border-2 border-black/20 bg-white hover:bg-black/5 text-xs cursor-pointer"
+              className="h-11 px-3 rounded-xl border-2 border-black/20 bg-white hover:bg-black/5 text-xs cursor-pointer transition-colors duration-150"
             >
               Refresh
             </button>
@@ -282,7 +298,7 @@ export default function ViewRewardsPage() {
                       <div className="text-sm text-black/60 mt-1">Start: {startedStr}</div>
                     </div>
                     <button
-                      className={`h-10 px-4 rounded-full font-medium self-start ${u?.redeemed || redeemingPhone === u?.phone ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-foreground text-background hover:opacity-90 cursor-pointer"}`}
+                      className={`h-10 px-4 rounded-full font-medium self-start transition-opacity duration-150 ${u?.redeemed || redeemingPhone === u?.phone ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-foreground text-background hover:opacity-90 cursor-pointer"}`}
                       onClick={() => openConfirm(u?.phone)}
                       disabled={!!u?.redeemed || redeemingPhone === u?.phone}
                     >
@@ -327,14 +343,14 @@ export default function ViewRewardsPage() {
                   <button
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     disabled={page === 1}
-                    className="h-8 px-3 rounded-lg border-2 border-black/20 disabled:opacity-50 text-xs cursor-pointer disabled:cursor-not-allowed"
+                    className="h-8 px-3 rounded-lg border-2 border-black/20 disabled:opacity-50 text-xs cursor-pointer disabled:cursor-not-allowed hover:bg-black/5 transition-colors duration-150"
                   >
                     Prev
                   </button>
                   <button
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages}
-                    className="h-8 px-3 rounded-lg border-2 border-black/20 disabled:opacity-50 text-xs cursor-pointer disabled:cursor-not-allowed"
+                    className="h-8 px-3 rounded-lg border-2 border-black/20 disabled:opacity-50 text-xs cursor-pointer disabled:cursor-not-allowed hover:bg-black/5 transition-colors duration-150"
                   >
                     Next
                   </button>

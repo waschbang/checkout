@@ -13,6 +13,7 @@ export default function ViewRewardsPage() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [confirmPhone, setConfirmPhone] = useState(null); // phone waiting for confirm
 
   // Rewards mapping by day index (1-7) based on the UI you shared
   const rewardsByDay = useMemo(
@@ -41,6 +42,28 @@ export default function ViewRewardsPage() {
     } else {
       setError("Invalid credentials. Try admin / admin.");
     }
+  }
+
+  function openConfirm(phone) {
+    setConfirmPhone(String(phone || ""));
+  }
+
+  async function confirmRedeem() {
+    if (!confirmPhone) return;
+    try {
+      await axios.post("/api/users/redeem", { phone: confirmPhone });
+      // After redeem, refetch users from the source to reflect updated redeemed flag
+      await handleRefresh();
+    } catch (err) {
+      alert("Redeem failed. Please try again.");
+      console.error(err);
+    } finally {
+      setConfirmPhone(null);
+    }
+  }
+
+  function cancelRedeem() {
+    setConfirmPhone(null);
   }
 
   // On mount, restore auth from localStorage
@@ -256,10 +279,11 @@ export default function ViewRewardsPage() {
                       <div className="text-sm text-black/60 mt-1">Start: {startedStr}</div>
                     </div>
                     <button
-                      className="h-10 px-4 rounded-full bg-foreground text-background font-medium hover:opacity-90 self-start"
-                      onClick={() => alert(`Redeemed for ${u?.name || u?.phone}`)}
+                      className={`h-10 px-4 rounded-full font-medium self-start ${u?.redeemed ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-foreground text-background hover:opacity-90"}`}
+                      onClick={() => openConfirm(u?.phone)}
+                      disabled={!!u?.redeemed}
                     >
-                      Redeem
+                      {u?.redeemed ? "Redeemed" : "Redeem"}
                     </button>
                   </div>
 
@@ -308,6 +332,19 @@ export default function ViewRewardsPage() {
           </div>
         )}
       </main>
+
+      {confirmPhone && (
+        <div className="fixed inset-0 bg-black/50 grid place-items-center z-50">
+          <div className="w-[90%] max-w-sm rounded-2xl bg-white p-5 border-2 border-black/20">
+            <h3 className="text-lg font-semibold mb-2">Confirm Redemption</h3>
+            <p className="text-sm text-black/70 mb-4">Mark rewards as redeemed for <strong>{confirmPhone}</strong>?</p>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={cancelRedeem} className="h-9 px-3 rounded-lg border-2 border-black/20 text-xs">Cancel</button>
+              <button onClick={confirmRedeem} className="h-9 px-3 rounded-lg bg-foreground text-background text-xs">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
       <Footer />
     </div>
   );

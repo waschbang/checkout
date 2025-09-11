@@ -1,7 +1,7 @@
 export async function getServerSideProps() {
   return {
     redirect: {
-      destination: "/premium/checkout",
+      destination: "/viewrewards",
       permanent: false,
     },
   };

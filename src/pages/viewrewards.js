@@ -2,6 +2,55 @@ import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import axios from "axios";
+import { Dialog } from "@headlessui/react";
+
+// EmployeeDetails component
+function EmployeeDetails({ isOpen, onClose, employee }) {
+  if (!employee) return null;
+  
+  return (
+    <Dialog open={isOpen} onClose={onClose} className="relative z-50">
+      <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+      <div className="fixed inset-0 flex items-center justify-center p-4">
+        <Dialog.Panel className="w-full max-w-md rounded-lg bg-white p-6">
+          <Dialog.Title className="text-lg font-semibold mb-4">Employee Details</Dialog.Title>
+          
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Name:</span>
+              <span className="font-medium">{employee.username}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Category:</span>
+              <span className="font-medium">{employee.category}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Location:</span>
+              <span className="font-medium">{employee.location}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">City:</span>
+              <span className="font-medium">{employee.city}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Address:</span>
+              <span className="font-medium text-right">{employee.address}</span>
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-end space-x-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+            >
+              Close
+            </button>
+          </div>
+        </Dialog.Panel>
+      </div>
+    </Dialog>
+  );
+}
 
 export default function ViewRewardsPage() {
   const [username, setUsername] = useState("");
@@ -15,6 +64,9 @@ export default function ViewRewardsPage() {
   const [pageSize, setPageSize] = useState(10);
   const [confirmPhone, setConfirmPhone] = useState(null); // phone waiting for confirm
   const [redeemingPhone, setRedeemingPhone] = useState(null); // phone currently being redeemed
+  const [employeeDetails, setEmployeeDetails] = useState(null); // employee details for view
+  const [isEmployeeDialogOpen, setIsEmployeeDialogOpen] = useState(false);
+  const [redeemStatus, setRedeemStatus] = useState({ success: null, message: '' });
 
   // Rewards mapping by day index (1-7) based on the UI you shared
   const rewardsByDay = useMemo(
@@ -30,18 +82,53 @@ export default function ViewRewardsPage() {
     []
   );
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    if (username === "admin" && password === "admin") {
-      setAuthed(true);
-      try {
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("imagine_admin_authed", "true");
+    if (loading) return; // Prevent multiple submissions
+    
+    setLoading(true);
+    setError("");
+    
+    try {
+      const response = await axios.post(
+        "https://imagine-sable.vercel.app/auth/login",
+        JSON.stringify({
+          username: username.trim().toUpperCase(),
+          pass: password
+        }),
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          validateStatus: (status) => status < 500, // Don't throw for 4xx errors
+          timeout: 10000 // 10 second timeout
         }
-      } catch {}
-      setError("");
-    } else {
-      setError("Invalid credentials. Try admin / admin.");
+      );
+      
+      console.log('Login response:', response.data); // Debug log
+      
+      if (response.data?.ok && response.data.employee) {
+        setAuthed(true);
+        window.localStorage.setItem("imagine_admin_authed", response.data.employee.username);
+        window.localStorage.setItem("imagine_employee", JSON.stringify(response.data.employee));
+        setError("");
+      } else {
+        const errorMessage = response.data?.message || 
+                           (response.status === 401 ? "Invalid username or password" : 
+                           response.status === 404 ? "Authentication service not found" :
+                           "Login failed. Please try again.");
+        setError(errorMessage);
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      const errorMessage = err.code === 'ECONNABORTED' 
+        ? "Request timed out. Please check your connection."
+        : err.message?.includes('Network Error')
+          ? "Network error. Please check your connection."
+          : "An unexpected error occurred. Please try again.";
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -49,29 +136,65 @@ export default function ViewRewardsPage() {
     setConfirmPhone(String(phone || ""));
   }
 
+  async function fetchEmployeeDetails(username) {
+    if (!username) return null;
+    try {
+      const { data } = await axios.get(
+        `https://imagine-sable.vercel.app/auth/employee/${encodeURIComponent(username)}`,
+        { timeout: 10000 }
+      );
+      return data?.ok ? data.employee : null;
+    } catch (error) {
+      console.error("Failed to fetch employee details:", error);
+      return null;
+    }
+  }
+
   async function confirmRedeem() {
     if (!confirmPhone) return;
+    
+    setRedeemingPhone(confirmPhone);
+    setRedeemStatus({ success: null, message: '' });
+    
     try {
-      setRedeemingPhone(confirmPhone);
       console.log("[ViewRewards] Redeeming for phone:", confirmPhone);
       const { data } = await axios.post(
         "https://imagine-sable.vercel.app/users/redeem",
-        { phone: confirmPhone },
-        { headers: { "Content-Type": "application/json" }, timeout: 15000 }
+        { 
+          phone: confirmPhone,
+          redeemby: username // Add the redeemer's username
+        },
+        { 
+          headers: { "Content-Type": "application/json" }, 
+          timeout: 15000 
+        }
       );
+      
       console.log("[ViewRewards] Redeem success:", data);
-      // After redeem, refetch users from the source to reflect updated redeemed flag
+      setRedeemStatus({ success: true, message: 'Redemption successful!' });
+      
+      // Fetch the redeemed user's details
+      if (data?.user?.redeemby) {
+        const employee = await fetchEmployeeDetails(data.user.redeemby);
+        if (employee) {
+          setEmployeeDetails(employee);
+          setIsEmployeeDialogOpen(true);
+        }
+      }
+      
+      // Refresh the users list
       await handleRefresh();
-      // Optional: ensure UI reflects server state immediately
-      // If you prefer a full reload, uncomment the next line
-      // if (typeof window !== "undefined") window.location.reload();
+      
     } catch (err) {
-      const msg = err?.response?.data || err?.message || err;
-      console.error("[ViewRewards] Redeem failed:", msg);
-      alert("Redeem failed. Please try again.\n" + (typeof msg === 'string' ? msg : JSON.stringify(msg)));
+      const errorMsg = err?.response?.data?.message || err.message || 'Redemption failed';
+      console.error("[ViewRewards] Redeem failed:", errorMsg);
+      setRedeemStatus({ 
+        success: false, 
+        message: `Redemption failed: ${errorMsg}` 
+      });
     } finally {
       setConfirmPhone(null);
-      setRedeemingPhone(null);
+      setRedeemingPhone(false);
     }
   }
 
@@ -83,8 +206,11 @@ export default function ViewRewardsPage() {
   useEffect(() => {
     try {
       if (typeof window !== "undefined") {
-        const flag = window.localStorage.getItem("imagine_admin_authed");
-        if (flag === "true") setAuthed(true);
+        const username = window.localStorage.getItem("imagine_admin_authed");
+        if (username) {
+          setUsername(username);
+          setAuthed(true);
+        }
       }
     } catch {}
   }, []);
@@ -222,12 +348,42 @@ export default function ViewRewardsPage() {
                 style={{ padding: "10px 12px", border: "1px solid #ddd", borderRadius: 8 }}
               />
             </label>
-            {error ? (
-              <div style={{ color: "#d00", fontSize: 14 }}>{error}</div>
-            ) : null}
-            <button type="submit" style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #222", background: "#111", color: "#fff", fontWeight: 600 }}>
-              Login
-            </button>
+            {error && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-red-700 text-sm">{error}</p>
+              </div>
+            )}
+            <div className="mt-4">
+              <button
+                type="submit"
+                disabled={!username || !password || loading}
+                className={`w-full h-11 bg-blue-600 text-white font-medium rounded-lg transition-colors ${
+                  !username || !password || loading 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:bg-blue-700'
+                }`}
+                style={{
+                  minWidth: '120px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0.5rem 1rem',
+                  fontSize: '0.875rem',
+                  lineHeight: '1.25rem',
+                  fontWeight: 500
+                }}
+              >
+                {loading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Logging in...
+                  </div>
+                ) : 'Login'}
+              </button>
+            </div>
           </form>
         </div>
       </div>
@@ -237,6 +393,11 @@ export default function ViewRewardsPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <Navbar />
+      <EmployeeDetails 
+        isOpen={isEmployeeDialogOpen} 
+        onClose={() => setIsEmployeeDialogOpen(false)}
+        employee={employeeDetails}
+      />
       <main className="flex-1 p-6 sm:p-12 mx-auto w-full max-w-6xl">
         <h1 className="text-2xl sm:text-3xl font-bold mb-3">Rewards</h1>
 
@@ -297,22 +458,29 @@ export default function ViewRewardsPage() {
                       <div className="text-sm text-black/70">{u?.phone || "—"}</div>
                       <div className="text-sm text-black/60 mt-1">Start: {startedStr}</div>
                     </div>
-                    <button
-                      className={`h-10 px-4 rounded-full font-medium self-start transition-opacity duration-150 ${u?.redeemed || redeemingPhone === u?.phone ? "bg-gray-300 text-gray-600 cursor-not-allowed" : "bg-foreground text-background hover:opacity-90 cursor-pointer"}`}
-                      onClick={() => openConfirm(u?.phone)}
-                      disabled={!!u?.redeemed || redeemingPhone === u?.phone}
-                    >
-                      {redeemingPhone === u?.phone ? (
-                        <span className="inline-flex items-center gap-2">
-                          <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                          Redeeming...
-                        </span>
-                      ) : u?.redeemed ? (
-                        "Redeemed"
-                      ) : (
-                        "Redeem"
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openConfirm(u?.phone)}
+                        disabled={loading || redeemingPhone === String(u?.phone)}
+                        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 text-sm"
+                      >
+                        {redeemingPhone === String(u?.phone) ? 'Processing...' : 'Redeem'}
+                      </button>
+                      {u?.redeemby && (
+                        <button
+                          onClick={async () => {
+                            const employee = await fetchEmployeeDetails(u.redeemby);
+                            if (employee) {
+                              setEmployeeDetails(employee);
+                              setIsEmployeeDialogOpen(true);
+                            }
+                          }}
+                          className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm"
+                        >
+                          View Details
+                        </button>
                       )}
-                    </button>
+                    </div>
                   </div>
 
                   <div className="mt-4">

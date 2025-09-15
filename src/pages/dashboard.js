@@ -2,6 +2,68 @@ import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import axios from "axios";
+import { Dialog } from "@headlessui/react";
+
+// EmployeeDetails component
+function EmployeeDetails({ isOpen, onClose, employee, loading }) {
+  return (
+    <Dialog open={isOpen} onClose={onClose} className="relative z-50">
+      <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+      <div className="fixed inset-0 flex items-center justify-center p-4">
+        <Dialog.Panel className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+          <Dialog.Title className="text-xl font-bold text-gray-800 mb-6 pb-2 border-b border-gray-100">
+            Employee Details
+          </Dialog.Title>
+          
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+              <p className="text-gray-600">Loading employee details...</p>
+            </div>
+          ) : employee ? (
+            <div className="space-y-4">
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-blue-800 text-lg mb-2">{employee.username}</h3>
+                <p className="text-blue-600 text-sm">{employee.category}</p>
+              </div>
+              
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-gray-500">Location:</span>
+                  <span className="font-medium text-gray-800">{employee.location}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-gray-500">City:</span>
+                  <span className="font-medium text-gray-800">{employee.city}</span>
+                </div>
+                <div className="pt-2">
+                  <p className="text-gray-500 mb-1">Address:</p>
+                  <p className="text-gray-800 bg-gray-50 p-3 rounded-md">
+                    {employee.address}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-500">No employee data available</p>
+            </div>
+          )}
+
+          <div className="mt-8 flex justify-end">
+            <button
+              onClick={onClose}
+              disabled={loading}
+              className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50"
+            >
+              Close
+            </button>
+          </div>
+        </Dialog.Panel>
+      </div>
+    </Dialog>
+  );
+}
 
 export default function DashboardPage() {
   const [username, setUsername] = useState("");
@@ -14,19 +76,58 @@ export default function DashboardPage() {
   const [typeFilter, setTypeFilter] = useState("ALL"); // ALL | QR | ONLINE
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [employeeDetails, setEmployeeDetails] = useState(null);
+  const [isEmployeeDialogOpen, setIsEmployeeDialogOpen] = useState(false);
+  const [redeemStatus, setRedeemStatus] = useState({ success: null, message: '' });
+  const [loadingEmployee, setLoadingEmployee] = useState(false);
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    if (username === "admin" && password === "admin") {
-      setAuthed(true);
-      try {
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("imagine_admin_authed", "true");
+    if (loading) return; // Prevent multiple submissions
+    
+    setLoading(true);
+    setError("");
+    
+    try {
+      const response = await axios.post(
+        "https://imagine-sable.vercel.app/auth/login",
+        JSON.stringify({
+          username: username.trim().toUpperCase(),
+          pass: password
+        }),
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          validateStatus: (status) => status < 500, // Don't throw for 4xx errors
+          timeout: 10000 // 10 second timeout
         }
-      } catch {}
-      setError("");
-    } else {
-      setError("Invalid credentials. Try admin / admin.");
+      );
+      
+      console.log('Login response:', response.data); // Debug log
+      
+      if (response.data?.ok && response.data.employee) {
+        setAuthed(true);
+        window.localStorage.setItem("imagine_admin_authed", response.data.employee.username);
+        window.localStorage.setItem("imagine_employee", JSON.stringify(response.data.employee));
+        setError("");
+      } else {
+        const errorMessage = response.data?.message || 
+                           (response.status === 401 ? "Invalid username or password" : 
+                           response.status === 404 ? "Authentication service not found" :
+                           "Login failed. Please try again.");
+        setError(errorMessage);
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      const errorMessage = err.code === 'ECONNABORTED' 
+        ? "Request timed out. Please check your connection."
+        : err.message?.includes('Network Error')
+          ? "Network error. Please check your connection."
+          : "An unexpected error occurred. Please try again.";
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -34,8 +135,11 @@ export default function DashboardPage() {
   useEffect(() => {
     try {
       if (typeof window !== "undefined") {
-        const flag = window.localStorage.getItem("imagine_admin_authed");
-        if (flag === "true") setAuthed(true);
+        const username = window.localStorage.getItem("imagine_admin_authed");
+        if (username) {
+          setUsername(username);
+          setAuthed(true);
+        }
       }
     } catch {}
   }, []);
@@ -69,6 +173,78 @@ export default function DashboardPage() {
     } catch (err) {
       console.error("Failed to fetch users:", err?.message || err);
       setError("Failed to fetch users. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchEmployeeDetails(username) {
+    if (!username) return null;
+    setLoadingEmployee(true);
+    try {
+      const { data } = await axios.get(
+        `https://imagine-sable.vercel.app/auth/employee/${encodeURIComponent(username)}`,
+        { 
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      return data?.ok ? data.employee : null;
+    } catch (error) {
+      console.error("Failed to fetch employee details:", error);
+      return null;
+    } finally {
+      setLoadingEmployee(false);
+    }
+  }
+
+  async function handleRedeem(phone) {
+    if (!authed || !phone) return;
+    setLoading(true);
+    setRedeemStatus({ success: null, message: '' });
+    
+    try {
+      const response = await axios.post(
+        "https://imagine-sable.vercel.app/users/redeem",
+        {
+          phone: phone.toString().trim(),
+          redeemby: username
+        },
+        { 
+          headers: { "Content-Type": "application/json" },
+          timeout: 15000 
+        }
+      );
+      
+      if (response.data?.ok) {
+        setRedeemStatus({ success: true, message: 'Redemption successful!' });
+        
+        // Fetch the redeemed user's details
+        if (response.data?.user?.redeemby) {
+          const employee = await fetchEmployeeDetails(response.data.user.redeemby);
+          if (employee) {
+            setEmployeeDetails(employee);
+            setIsEmployeeDialogOpen(true);
+          }
+        }
+        
+        // Refresh the users list
+        await handleRefresh();
+      } else {
+        setRedeemStatus({ 
+          success: false, 
+          message: response.data?.message || "Failed to process redemption" 
+        });
+      }
+    } catch (err) {
+      const errorMsg = err?.response?.data?.message || err.message || 'Redemption failed';
+      console.error("Redeem error:", errorMsg);
+      setRedeemStatus({ 
+        success: false, 
+        message: `Redemption failed: ${errorMsg}` 
+      });
     } finally {
       setLoading(false);
     }
@@ -146,6 +322,22 @@ export default function DashboardPage() {
     return { label: "Not played", variant: "idle" };
   }
 
+  // Aggregate stats across users (based on current filters)
+  const stats = useMemo(() => {
+    const total = filtered.length; // treat each user as one booking
+    let playedUsers = 0;
+    filtered.forEach((u) => {
+      // A user is considered "played" if any of the 7 days is won/lost/played
+      const anyPlayed = [1,2,3,4,5,6,7].some((d) => {
+        const st = dayStatus(u, d);
+        return st.variant === "won" || st.variant === "lost" || st.variant === "played";
+      });
+      if (anyPlayed) playedUsers += 1;
+    });
+    const notPlayedUsers = Math.max(0, total - playedUsers);
+    return { total, playedUsers, notPlayedUsers };
+  }, [filtered]);
+
   if (!authed) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
@@ -174,12 +366,42 @@ export default function DashboardPage() {
                 style={{ padding: "10px 12px", border: "1px solid #ddd", borderRadius: 8 }}
               />
             </label>
-            {error ? (
-              <div style={{ color: "#d00", fontSize: 14 }}>{error}</div>
-            ) : null}
-            <button type="submit" style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #222", background: "#111", color: "#fff", fontWeight: 600 }}>
-              Login
-            </button>
+            {error && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-red-700 text-sm">{error}</p>
+              </div>
+            )}
+            <div className="mt-4">
+              <button
+                type="submit"
+                disabled={!username || !password || loading}
+                className={`w-full h-11 bg-blue-600 text-white font-medium rounded-lg transition-colors ${
+                  !username || !password || loading 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:bg-blue-700'
+                }`}
+                style={{
+                  minWidth: '120px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0.5rem 1rem',
+                  fontSize: '0.875rem',
+                  lineHeight: '1.25rem',
+                  fontWeight: 500
+                }}
+              >
+                {loading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Logging in...
+                  </div>
+                ) : 'Login'}
+              </button>
+            </div>
           </form>
         </div>
       </div>
@@ -187,8 +409,24 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="min-h-screen flex flex-col bg-gray-50">
       <Navbar />
+      <EmployeeDetails 
+        isOpen={isEmployeeDialogOpen} 
+        onClose={() => setIsEmployeeDialogOpen(false)}
+        employee={employeeDetails}
+        loading={loadingEmployee}
+      />
+      
+      {/* Redemption Status Toast */}
+      {redeemStatus.message && (
+        <div className={`fixed bottom-4 right-4 p-4 rounded-md shadow-lg ${
+          redeemStatus.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+        }`}>
+          {redeemStatus.message}
+        </div>
+      )}
+      
       <main className="flex-1 p-6 sm:p-12 mx-auto w-full max-w-7xl">
         <h1 className="text-2xl sm:text-3xl font-bold mb-4">Admin Dashboard</h1>
 
@@ -237,6 +475,21 @@ export default function DashboardPage() {
           <div className="text-red-600">{error}</div>
         ) : (
           <>
+          {/* Stats summary */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <div className="rounded-2xl border-2 border-black/20 bg-white p-4">
+              <div className="text-xs text-black/60">Total bookings</div>
+              <div className="text-2xl font-semibold">{stats.total}</div>
+            </div>
+            <div className="rounded-2xl border-2 border-black/20 bg-white p-4">
+              <div className="text-xs text-black/60">Played</div>
+              <div className="text-2xl font-semibold text-blue-700">{stats.playedUsers}</div>
+            </div>
+            <div className="rounded-2xl border-2 border-black/20 bg-white p-4">
+              <div className="text-xs text-black/60">Not played</div>
+              <div className="text-2xl font-semibold text-black/70">{stats.notPlayedUsers}</div>
+            </div>
+          </div>
           <div className="overflow-auto border-2 border-black/20 rounded-2xl">
             <table className="min-w-full text-sm">
               <thead className="bg-black/5">
@@ -245,6 +498,7 @@ export default function DashboardPage() {
                   <th className="text-left px-4 py-3 font-medium">Phone</th>
                   <th className="text-left px-4 py-3 font-medium">Type</th>
                   <th className="text-left px-4 py-3 font-medium">Start</th>
+                  <th className="text-left px-4 py-3 font-medium">Status</th>
                   {[1,2,3,4,5,6,7].map((d) => (
                     <th key={d} className="text-center px-2 py-3 font-medium">D{d}</th>
                   ))}
@@ -261,6 +515,37 @@ export default function DashboardPage() {
                       <td className="px-4 py-3 whitespace-nowrap">{u?.phone || "—"}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{type}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{startedStr}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {u?.redeemby ? (
+                          <button
+                            onClick={async () => {
+                              const employee = await fetchEmployeeDetails(u.redeemby);
+                              if (employee) {
+                                setEmployeeDetails(employee);
+                                setIsEmployeeDialogOpen(true);
+                              }
+                            }}
+                            disabled={loadingEmployee}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                              loadingEmployee 
+                                ? 'bg-gray-400 cursor-not-allowed' 
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
+                          >
+                            {loadingEmployee ? (
+                              <div className="flex items-center gap-2">
+                                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Loading...
+                              </div>
+                            ) : 'View Details'}
+                          </button>
+                        ) : (
+                          <span className="text-gray-500 text-sm">Not redeemed</span>
+                        )}
+                      </td>
                       {[1,2,3,4,5,6,7].map((d) => {
                         const st = dayStatus(u, d);
                         const cls = st.variant === "won" ? "bg-emerald-100 text-emerald-800"

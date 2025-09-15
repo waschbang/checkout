@@ -3,16 +3,23 @@ import { useEffect, useState } from "react";
 
 export default function Navbar() {
   const [authed, setAuthed] = useState(false);
+  const [username, setUsername] = useState('');
 
   useEffect(() => {
     try {
       if (typeof window !== "undefined") {
-        setAuthed(window.localStorage.getItem("imagine_admin_authed") === "true");
+        const storedUsername = window.localStorage.getItem("imagine_admin_authed");
+        setAuthed(!!storedUsername);
+        setUsername(storedUsername || '');
+        
         const onStorage = (e) => {
           if (e.key === "imagine_admin_authed") {
-            setAuthed(e.newValue === "true");
+            const newUsername = e.newValue;
+            setAuthed(!!newUsername);
+            setUsername(newUsername || '');
           }
         };
+        
         window.addEventListener("storage", onStorage);
         return () => window.removeEventListener("storage", onStorage);
       }
@@ -39,12 +46,21 @@ export default function Navbar() {
           <a className="hover:underline" href="/viewrewards">View Rewards</a>
           <a className="hover:underline" href="/dashboard">Dashboard</a>
           {authed && (
-            <button
-              onClick={handleLogout}
-              className="ml-2 h-9 px-3 rounded-lg bg-foreground text-background font-medium hover:opacity-90 text-xs"
-            >
-              Logout
-            </button>
+            <div className="flex items-center gap-4">
+              <div className="bg-gradient-to-r from-blue-50 to-blue-100 px-4 py-2 rounded-lg border border-blue-100">
+                <p className="text-xs text-blue-600 font-medium">Welcome back,</p>
+                <p className="text-sm font-semibold text-blue-800">{username}</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="h-9 px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors text-sm flex items-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Sign out
+              </button>
+            </div>
           )}
         </nav>
       </div>

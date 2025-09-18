@@ -220,7 +220,7 @@ export default function DashboardPage() {
       );
       
       if (response.data?.ok) {
-        setRedeemStatus({ success: true, message: 'Redemption successful!' });
+        setRedeemStatus({ success: true, message: 'Claim successful!' });
         
         // Fetch the redeemed user's details
         if (response.data?.user?.redeemby) {
@@ -236,7 +236,7 @@ export default function DashboardPage() {
       } else {
         setRedeemStatus({ 
           success: false, 
-          message: response.data?.message || "Failed to process redemption" 
+          message: response.data?.message || "Failed to process claim" 
         });
       }
     } catch (err) {
@@ -244,7 +244,7 @@ export default function DashboardPage() {
       console.error("Redeem error:", errorMsg);
       setRedeemStatus({ 
         success: false, 
-        message: `Redemption failed: ${errorMsg}` 
+        message: `Claim failed: ${errorMsg}` 
       });
     } finally {
       setLoading(false);
@@ -438,7 +438,7 @@ export default function DashboardPage() {
         loading={loadingEmployee}
       />
       
-      {/* Redemption Status Toast */}
+      {/* Claim Status Toast */}
       {redeemStatus.message && (
         <div className={`fixed bottom-4 right-4 p-4 rounded-md shadow-lg ${
           redeemStatus.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
@@ -498,7 +498,7 @@ export default function DashboardPage() {
           {/* Stats summary */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <div className="rounded-2xl border-2 border-black/20 bg-white p-4">
-              <div className="text-xs text-black/60">Total bookings</div>
+              <div className="text-xs text-black/60">Total participants</div>
               <div className="text-2xl font-semibold">{stats.total}</div>
             </div>
             <div className="rounded-2xl border-2 border-black/20 bg-white p-4">
@@ -572,7 +572,7 @@ export default function DashboardPage() {
                             ) : 'View Details'}
                           </button>
                         ) : (
-                          <span className="text-gray-500 text-sm">Not redeemed</span>
+                          <span className="text-gray-500 text-sm">Not claimed</span>
                         )}
                       </td>
                       {[1,2,3,4,5,6,7].map((d) => {

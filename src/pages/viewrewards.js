@@ -174,7 +174,7 @@ export default function ViewRewardsPage() {
     setRedeemStatus({ success: null, message: '' });
     
     try {
-      console.log("[ViewRewards] Redeeming reward for phone:", phone, "reward ID:", rewardId);
+      console.log("[ViewRewards] Claiming reward for phone:", phone, "reward ID:", rewardId);
       const { data } = await axios.post(
         "https://imagine-sable.vercel.app/users/redeem",
         { 
@@ -189,11 +189,11 @@ export default function ViewRewardsPage() {
       );
       
       if (!data?.ok || !data?.user) {
-        throw new Error(data?.message || 'Redemption failed');
+        throw new Error(data?.message || 'Claim failed');
       }
 
-      console.log("[ViewRewards] Reward redemption success:", data);
-      setRedeemStatus({ success: true, message: 'Reward redeemed successfully!' });
+      console.log("[ViewRewards] Reward claim success:", data);
+      setRedeemStatus({ success: true, message: 'Reward claimed successfully!' });
       
       // Update the UI to show this specific reward as redeemed
       setUsers((prevUsers) =>
@@ -249,11 +249,11 @@ export default function ViewRewardsPage() {
       }
       
     } catch (err) {
-      const errorMsg = err?.response?.data?.message || err.message || 'Redemption failed';
-      console.error("[ViewRewards] Reward redemption failed:", errorMsg);
+      const errorMsg = err?.response?.data?.message || err.message || 'Claim failed';
+      console.error("[ViewRewards] Reward claim failed:", errorMsg);
       setRedeemStatus({ 
         success: false, 
-        message: `Redemption failed: ${errorMsg}` 
+        message: `Claim failed: ${errorMsg}` 
       });
     } finally {
       setConfirmPhone(null);
@@ -542,7 +542,7 @@ export default function ViewRewardsPage() {
                         const name = Array.isArray(u?.redeemby)
                           ? (u.redeemby.find((v) => !!v) || null)
                           : (u?.redeemby || null);
-                        return name ? `Redeemed by: ${name}` : 'Not yet redeemed';
+                        return name ? `Last claimed by: ${name}` : 'Not yet claimed';
                       })()}
                     </div>
                   </div>
@@ -587,7 +587,7 @@ export default function ViewRewardsPage() {
                                 disabled={loading || redeemingPhone === `${u?.phone}-${reward.id}`}
                                 className={`px-3 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700`}
                               >
-                                {redeemingPhone === `${u?.phone}-${reward.id}` ? 'Processing...' : 'Redeem'}
+                                {redeemingPhone === `${u?.phone}-${reward.id}` ? 'Processing...' : 'Claim'}
                               </button>
                             )}
                           </div>
@@ -632,15 +632,15 @@ export default function ViewRewardsPage() {
       {confirmPhone && (
         <div className="fixed inset-0 bg-black/50 grid place-items-center z-50">
           <div className="w-[90%] max-w-sm rounded-2xl bg-white p-5 border-2 border-black/20">
-            <h3 className="text-lg font-semibold mb-2">Confirm Redemption</h3>
-            <p className="text-sm text-black/70 mb-4">Mark rewards as redeemed for <strong>{confirmPhone}</strong>?</p>
+            <h3 className="text-lg font-semibold mb-2">Confirm Claim</h3>
+            <p className="text-sm text-black/70 mb-4">Mark this reward as claimed for <strong>{confirmPhone}</strong>?</p>
             <div className="flex items-center justify-end gap-2">
               <button onClick={cancelRedeem} disabled={!!redeemingPhone} className="h-9 px-3 rounded-lg border-2 border-black/20 text-xs disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
               <button onClick={confirmRedeem} disabled={!!redeemingPhone} className="h-9 px-3 rounded-lg bg-foreground text-background text-xs disabled:opacity-50 disabled:cursor-not-allowed">
                 {redeemingPhone ? (
                   <span className="inline-flex items-center gap-2">
                     <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                    Redeeming...
+                    Claiming...
                   </span>
                 ) : (
                   "Confirm"

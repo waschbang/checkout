@@ -69,17 +69,30 @@ export default function ViewRewardsPage() {
   const [isEmployeeDialogOpen, setIsEmployeeDialogOpen] = useState(false);
   const [redeemStatus, setRedeemStatus] = useState({ success: null, message: '' });
 
-  // Rewards mapping by day index (1-7) based on the UI you shared
-  const rewardsByDay = useMemo(
-    () => ({
-      1: "17% off iPhone accessory bundles (TG, Tekne Case, Tekne Spotfree, Tekne Adapter, Lens Protector)",
-      2: "8% on your next iPad",
-      3: "8% on your next Macbook",
-      4: "50% off the next iCare service",
-      5: "17 AirPods for 17 lucky winners",
-      6: "71 diamond studs for 71 lucky winners",
-      7: "A Maldives couple trip worth nearly ₹3 lakhs",
-    }),
+  // All users will have these 4 rewards by default
+  const defaultRewards = useMemo(
+    () => [
+      { 
+        id: 1,
+        text: "17% off iPhone accessory bundles (TG, Tekne Case, Tekne Spotfree, Tekne Adapter, Lens Protector)",
+        description: "iPhone Accessories Bundle"
+      },
+      { 
+        id: 2,
+        text: "8% on your next iPad",
+        description: "iPad Discount"
+      },
+      { 
+        id: 3,
+        text: "8% on your next Macbook",
+        description: "MacBook Discount"
+      },
+      { 
+        id: 4,
+        text: "50% off the next iCare service",
+        description: "iCare Service Discount"
+      }
+    ],
     []
   );
 
@@ -133,8 +146,8 @@ export default function ViewRewardsPage() {
     }
   }
 
-  function openConfirm(phone) {
-    setConfirmPhone(String(phone || ""));
+  function openConfirm(phone, rewardId) {
+    setConfirmPhone(`${String(phone || "")}-${rewardId}`);
   }
 
   async function fetchEmployeeDetails(username) {
@@ -154,16 +167,20 @@ export default function ViewRewardsPage() {
   async function confirmRedeem() {
     if (!confirmPhone) return;
     
+    // Extract phone and reward ID from confirmPhone (format: "phone-rewardId")
+    const [phone, rewardId] = confirmPhone.split('-');
+    
     setRedeemingPhone(confirmPhone);
     setRedeemStatus({ success: null, message: '' });
     
     try {
-      console.log("[ViewRewards] Redeeming for phone:", confirmPhone);
+      console.log("[ViewRewards] Redeeming reward for phone:", phone, "reward ID:", rewardId);
       const { data } = await axios.post(
         "https://imagine-sable.vercel.app/users/redeem",
         { 
-          phone: confirmPhone,
-          redeemby: username // Add the redeemer's username
+          phone: phone,
+          index: parseInt(rewardId),
+          redeemby: username
         },
         { 
           headers: { "Content-Type": "application/json" }, 
@@ -171,24 +188,69 @@ export default function ViewRewardsPage() {
         }
       );
       
-      console.log("[ViewRewards] Redeem success:", data);
-      setRedeemStatus({ success: true, message: 'Redemption successful!' });
+      if (!data?.ok || !data?.user) {
+        throw new Error(data?.message || 'Redemption failed');
+      }
+
+      console.log("[ViewRewards] Reward redemption success:", data);
+      setRedeemStatus({ success: true, message: 'Reward redeemed successfully!' });
       
-      // Fetch the redeemed user's details
-      if (data?.user?.redeemby) {
-        const employee = await fetchEmployeeDetails(data.user.redeemby);
+      // Update the UI to show this specific reward as redeemed
+      setUsers((prevUsers) =>
+        prevUsers.map((user) => {
+          if (user.phone !== phone) return user;
+          // Prefer the authoritative server response
+          const respUser = data.user;
+          // Normalize redeemed to an array of strings
+          const redeemed = Array.isArray(respUser?.redeemed)
+            ? respUser.redeemed.map((v) => String(v))
+            : (() => {
+                // Fallback: create from local by setting the selected index to true
+                const flags = Array(4).fill("false");
+                const idx = Math.max(1, Math.min(4, parseInt(rewardId))) - 1;
+                flags[idx] = "true";
+                return flags;
+              })();
+          // Normalize redeemby to an array aligned with rewards
+          const idx = Math.max(1, Math.min(4, parseInt(rewardId))) - 1;
+          let redeemerArr;
+          if (Array.isArray(respUser?.redeemby)) {
+            redeemerArr = respUser.redeemby;
+          } else if (typeof respUser?.redeemby === 'string') {
+            // If backend sends a single string, map it for this index
+            redeemerArr = Array(4).fill(null);
+            redeemerArr[idx] = respUser.redeemby;
+          } else {
+            // Fallback: set only the current index to username
+            redeemerArr = Array(4).fill(null);
+            redeemerArr[idx] = username;
+          }
+          return {
+            ...user,
+            redeemby: redeemerArr,
+            redeemed: redeemed,
+            // Keep legacy field in sync (optional)
+            redeemedRewards: Array.from(
+              new Set([...(user.redeemedRewards || []), parseInt(rewardId)])
+            ),
+          };
+        })
+      );
+      
+      // Show success message
+      const i = Math.max(1, Math.min(4, parseInt(rewardId))) - 1;
+      const redeemer = (Array.isArray(data?.user?.redeemby) ? data.user.redeemby[i] : data?.user?.redeemby) || data?.redeemby || data?.redeemedBy || username;
+      if (redeemer) {
+        const employee = await fetchEmployeeDetails(redeemer);
         if (employee) {
           setEmployeeDetails(employee);
           setIsEmployeeDialogOpen(true);
         }
       }
       
-      // Refresh the users list
-      await handleRefresh();
-      
     } catch (err) {
       const errorMsg = err?.response?.data?.message || err.message || 'Redemption failed';
-      console.error("[ViewRewards] Redeem failed:", errorMsg);
+      console.error("[ViewRewards] Reward redemption failed:", errorMsg);
       setRedeemStatus({ 
         success: false, 
         message: `Redemption failed: ${errorMsg}` 
@@ -256,27 +318,23 @@ export default function ViewRewardsPage() {
     }
   }
 
-  function getEligibleRewards(dailyResults) {
-    // dailyResults is an array like ["1W", "2L", "3W", null, ...]
-    if (!Array.isArray(dailyResults)) return [];
-    const rewards = [];
-    for (const token of dailyResults) {
-      if (typeof token !== "string") continue;
-      const match = token.match(/^(\d+)([A-Z])$/i);
-      if (!match) continue;
-      const day = parseInt(match[1], 10);
-      const status = (match[2] || "").toUpperCase();
-      if (status === "W" && rewardsByDay[day]) {
-        rewards.push({ day, text: rewardsByDay[day] });
-      }
-    }
-    // Ensure unique rewards by day in case of duplicates
-    const seen = new Set();
-    return rewards.filter((r) => {
-      const key = r.day;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+  function getEligibleRewards(user) {
+    // Every user gets all 4 rewards by default
+    // Backend returns user.redeemed as an array of strings: ["false","true",...]
+    const redeemedFlags = Array.isArray(user?.redeemed)
+      ? user.redeemed.map((v) => String(v).toLowerCase() === "true")
+      : [];
+
+    // Fallback for older local state where we kept an array of redeemed reward ids
+    const redeemedIds = user?.redeemedRewards || [];
+    
+    return defaultRewards.map((reward) => {
+      const byFlags = Boolean(redeemedFlags[reward.id - 1]);
+      const byIds = redeemedIds.includes(reward.id);
+      return {
+        ...reward,
+        redeemed: byFlags || byIds,
+      };
     });
   }
 
@@ -284,7 +342,8 @@ export default function ViewRewardsPage() {
     const q = query.trim().toLowerCase();
     if (!q) return users;
     return users.filter((u) =>
-      (u?.name || "").toLowerCase().includes(q) || (u?.phone || "").toLowerCase().includes(q)
+      (u?.name || "").toLowerCase().includes(q) || 
+      (u?.phone || "").toLowerCase().includes(q)
     );
   }, [users, query]);
 
@@ -303,7 +362,7 @@ export default function ViewRewardsPage() {
     const headers = ["Name", "Phone", "Start Date", "Rewards"];
     const lines = [headers.join(",")];
     filtered.forEach((u) => {
-      const rewards = getEligibleRewards(u?.daily_results).map((r) => r.text).join("; ");
+      const rewards = getEligibleRewards(u).map((r) => r.text).join("; ");
       const startedStr = u?.start_date ? new Date(u.start_date).toISOString() : "";
       const row = [u?.name || "", u?.phone || "", startedStr, rewards]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`) // CSV escape
@@ -467,7 +526,7 @@ export default function ViewRewardsPage() {
         ) : (
           <div className="space-y-4">
             {paginated.map((u) => {
-              const rewards = getEligibleRewards(u?.daily_results);
+              const rewards = getEligibleRewards(u);
               const started = u?.start_date ? new Date(u.start_date) : null;
               const startedStr = started ? started.toLocaleString() : "—";
               return (
@@ -478,44 +537,63 @@ export default function ViewRewardsPage() {
                       <div className="text-sm text-black/70">{u?.phone || "—"}</div>
                       <div className="text-sm text-black/60 mt-1">Start: {startedStr}</div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {!u?.redeemby && (
-                        <button
-                          onClick={() => openConfirm(u?.phone)}
-                          disabled={loading || redeemingPhone === String(u?.phone)}
-                          className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 text-sm"
-                        >
-                          {redeemingPhone === String(u?.phone) ? 'Processing...' : 'Redeem'}
-                        </button>
-                      )}
-                      {u?.redeemby && (
-                        <button
-                          onClick={async () => {
-                            const employee = await fetchEmployeeDetails(u.redeemby);
-                            if (employee) {
-                              setEmployeeDetails(employee);
-                              setIsEmployeeDialogOpen(true);
-                            }
-                          }}
-                          className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm"
-                        >
-                          View Details
-                        </button>
-                      )}
+                    <div className="text-sm text-black/60">
+                      {(() => {
+                        const name = Array.isArray(u?.redeemby)
+                          ? (u.redeemby.find((v) => !!v) || null)
+                          : (u?.redeemby || null);
+                        return name ? `Redeemed by: ${name}` : 'Not yet redeemed';
+                      })()}
                     </div>
                   </div>
 
                   <div className="mt-4">
-                    <div className="text-sm font-medium mb-2">Eligible Rewards</div>
-                    {rewards.length ? (
-                      <ul className="list-disc pl-5 space-y-1 text-sm">
-                        {rewards.map((r) => (
-                          <li key={`${u.id}-${r.day}`}>{r.text}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div className="text-sm text-black/60">No rewards yet</div>
-                    )}
+                    <div className="text-sm font-medium mb-2">Available Rewards</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {rewards.map((reward) => (
+                        <div 
+                          key={`${u.id}-${reward.id}`}
+                          className={`p-3 rounded-lg border ${
+                            reward.redeemed 
+                              ? 'bg-gray-50 border-gray-200' 
+                              : 'bg-white border-gray-300 shadow-sm'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="text-sm">
+                              <div className="font-medium">{reward.description}</div>
+                              <div className="text-black/70 text-xs">{reward.text}</div>
+                            </div>
+                            {reward.redeemed ? (
+                              <button
+                                onClick={async () => {
+                                  const redeemerName = Array.isArray(u?.redeemby)
+                                    ? u.redeemby[reward.id - 1]
+                                    : u?.redeemby;
+                                  if (!redeemerName) return;
+                                  const employee = await fetchEmployeeDetails(redeemerName);
+                                  if (employee) {
+                                    setEmployeeDetails(employee);
+                                    setIsEmployeeDialogOpen(true);
+                                  }
+                                }}
+                                className={`px-3 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700`}
+                              >
+                                View Details
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => openConfirm(u?.phone, reward.id)}
+                                disabled={loading || redeemingPhone === `${u?.phone}-${reward.id}`}
+                                className={`px-3 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700`}
+                              >
+                                {redeemingPhone === `${u?.phone}-${reward.id}` ? 'Processing...' : 'Redeem'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               );

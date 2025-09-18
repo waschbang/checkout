@@ -536,10 +536,19 @@ export default function DashboardPage() {
                       <td className="px-4 py-3 whitespace-nowrap">{type}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{startedStr}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {u?.redeemby ? (
+                        {(() => {
+                          const redeemer = Array.isArray(u?.redeemby)
+                            ? (u.redeemby.find((v) => !!v) || null)
+                            : (u?.redeemby || null);
+                          return redeemer;
+                        })() ? (
                           <button
                             onClick={async () => {
-                              const employee = await fetchEmployeeDetails(u.redeemby);
+                              const redeemer = Array.isArray(u?.redeemby)
+                                ? (u.redeemby.find((v) => !!v) || null)
+                                : (u?.redeemby || null);
+                              if (!redeemer) return;
+                              const employee = await fetchEmployeeDetails(redeemer);
                               if (employee) {
                                 setEmployeeDetails(employee);
                                 setIsEmployeeDialogOpen(true);
